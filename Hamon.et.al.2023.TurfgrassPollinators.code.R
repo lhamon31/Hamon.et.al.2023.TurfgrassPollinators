@@ -1,8 +1,11 @@
 #comparing abundance of insect families/guilds 
+
 # Read in the pan trap abundance by bout data set
-alldat = read.csv('sampling.by.date.csv') 
+alldat = read.csv('sampling.by.date.csv')
+
 #load sampling dates matched with unique site/date IDs
 samplecodes = read.csv('sampling.bout.codes.csv')
+
 #load guild data
 guildlist = read.csv('guild.designations.csv')
 
@@ -13,9 +16,10 @@ library(lme4) #for constructing mixed models
 library(lmerTest) #for displaying p-values
 library(car) #for Anova function
 library(emmeans) #for lmer posthoc test
-library(splusTimeDate) #for fixing date designations
-#for biodiversity 
-library(BiodiversityR) # also loads vegan
+library(BiodiversityR) # for biodiversity metrics
+library(glmmTMB)
+library(sjstats) #test for overdispersion 
+library(cowplot) #for arranging plots
 
 #merge standardized dates on the basis of unique site/date IDs
 alldat2 <- merge(alldat, samplecodes, by = c("Date", "Site"))
@@ -63,35 +67,51 @@ familybout2$date.clean <- as.Date(familybout2$date.clean, "%m/%d/%Y")
 #make year a factor
 familybout2[,'Year']<-as.character(familybout2[,'Year'])
 
-##transforming data to approach normality
-#create a column with sqrt transformed number
-familybout2$sqrt.number<-sqrt((familybout2$number)+1)
-
 #testing the effect of year*jd on FAMILY abundance
-df = familybout2[(familybout2$Family=="Aphididae"),] #pull out a single family
-mod1 <- lmer(sqrt.number~Year*jd + (1|site.clean), data = df)
+df = familybout2[(familybout2$Family=="Crabronidae"),] #pull out a single family
+table(df$number)
+mod1<-glmmTMB(number~Year*jd + (1|site.clean), data = df,
+        family = "nbinom2",
+        ziformula= ~ 1)
 summary(mod1)
 #Use type 3 if interaction is present
-Anova(mod1, type=3, test.statistic=c("F"))
+Anova(mod1, type=2)
 emmeans(mod1, specs = pairwise ~ Year, adjust = "tukey")
+
 #visualize model estimates
 #load palette
-cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
-
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9")
 df$fit<-predict(mod1)
-Scoliidaeplot<- ggplot(df,aes(jd, fit, linetype=Year, shape=Year)) +
+Ichneumonidaeplot<- ggplot(df,aes(jd, fit, linetype=Year, shape=Year)) +
   theme_classic()+
-  geom_smooth(method="lm", size=0.8, aes(color=Year)) +
+  geom_smooth(method="lm", linewidth=0.8, aes(color=Year)) +
   geom_point(size = 2.4, aes(color=Year))+
   scale_color_manual(values=cbbPalette)+
-  labs(x ="Julian day", y =expression(sqrt("Abundance + 1")))+
+  labs(x ="Julian day", y = "Abundance")+
   xlim(190,303)+
   theme(axis.title.x = element_blank(),
         axis.title.y = element_blank(),
         axis.text.x = element_text(size=18,family="serif", colour = "black"),
         axis.text.y = element_text(size=18,family="serif", colour = "black"),
         legend.position = "none")
-Scoliidaeplot
+Ichneumonidaeplot
+
+#axis.title.x = element_blank()
+
+allplots<-plot_grid(Dolichopodidaeplot, Formicidaeplot, Syrphidaeplot, Calliphoridaeplot,
+                    Cicadellidaeplot, Halictidaeplot, Hesperiidaeplot, Ichneumonidaeplot,
+                    Sarcophagidaeplot, Apidaeplot, Chloropidaeplot, Crabronidaeplot,
+                    Miridaeplot,
+                    nrow = 4,
+                    ncol = 4,
+                    labels = "auto",
+                    label_size = 19,
+                    align = "hv")
+save_plot("nbinom.family.interaction.plot.png", allplots, nrow = 4, ncol = 4)
+
+#################################################################################
+#guilds
+#################################################################################
 
 #merge alldat2 (i.e. all families) with guild designations
 guilddat <- merge(alldat3, guildlist, by = c("Family"), all.x = TRUE, all.y = FALSE)
@@ -123,29 +143,84 @@ guildbout2[,'Year']<-as.character(guildbout2[,'Year'])
 guildbout2$sqrt.number <- sqrt((guildbout2$number)+1)
 
 #testing the effect of year*jd on GUILD abundance
-df = guildbout2[(guildbout2$Guild=="bees"),] #pull out a single guild
-mod1 <- lmer(sqrt.number~Year*jd + (1|site.clean), data = df)
+df = guildbout2[(guildbout2$Guild=="predatory flies"),] #pull out a single guild
+mod1<-glmmTMB(number~Year*jd + (1|site.clean), data = df,
+              family = "nbinom2",
+              ziformula= ~ 1)
 summary(mod1)
 #Use type 3 if interaction is present
-Anova(mod1, type=3, test.statistic=c("F"))
+Anova(mod1, type=2)
 emmeans(mod1, specs = pairwise ~ Year, adjust = "tukey")
-#visualize model estimates
-cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
+#visualize model estimates
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9")
 df$fit<-predict(mod1)
-butterflyplot<- ggplot(df,aes(jd, fit, linetype=Year, shape=Year)) +
+flyplot<- ggplot(df,aes(jd, fit, linetype=Year, shape=Year)) +
   theme_classic()+
   geom_smooth(method="lm", size=0.8, aes(color=Year)) +
   geom_point(size = 2.4, aes(color=Year))+
   scale_color_manual(values=cbbPalette)+
-  labs(x ="Julian day", y =expression(sqrt("Abundance + 1")))+
+  labs(x ="Julian day", y ="Abundance")+
   xlim(190,303)+
-  theme(axis.title.x = element_blank(),
+  theme(axis.title.x = element_text(size=18,family="serif", colour = "black"),
         axis.title.y = element_blank(),
         axis.text.x=element_text(size=18,family="serif", colour = "black"),
         axis.text.y=element_text(size=18,family="serif", colour = "black"),
         legend.position = "none")
-butterflyplot
+flyplot
+
+allplots2<-plot_grid(waspplot, flyplot,
+                    nrow = 1,
+                    ncol = 2,
+                    labels = "auto",
+                    label_size = 19,
+                    align = "hv")
+save_plot("nbinom.guild.interaction.plot.png", allplots2, nrow = 1, ncol = 2)
+
+#################################################################################
+#trap color preference
+#################################################################################
+
+#group abundance by guild, color, and site
+trapdat <- guilddat %>%
+  group_by(Site, Color, Guild) %>%
+  summarise(number = sum(Abundance)) 
+
+##transforming data to approach normality
+#create a column with sqrt transformed number
+trapdat$sqrt.number<-sqrt((trapdat$number)+1)
+
+#test the effect of trap color on abundance
+df = trapdat[(trapdat$Guild == "predatory flies"),] #pull out a single guild
+df <- df %>%
+  filter(!(Color == "NA")) #filter out generated NAs
+mod1 <- lmer(sqrt.number ~ Color + (1|Site), data = df)
+summary(mod1)
+Anova(mod1, type=2, test.statistic=c("F"))
+emmeans(mod1, specs = pairwise ~ Color, adjust = "tukey")
+
+#visualize model estimates
+flyplot <- ggplot(df, aes(Color, sqrt.number, fill = Color))+
+  geom_boxplot()+
+  theme_classic()+
+  scale_fill_manual(values=c("blue", "white", "yellow"))+
+  labs(x ="Trap color", y =expression(sqrt("Abundance + 1")))+
+  theme(axis.title.x = element_text(size=18,family="serif", colour = "black"),
+        axis.text.x = element_text(size=18,family="serif", colour = "black"),
+        axis.title.y = element_blank(),
+        axis.text.y = element_text(size=18,family="serif", colour = "black"),
+        legend.position = "none")
+flyplot
+
+allplots<-plot_grid(beeplot, butterflyplot, waspplot, flyplot,
+                    nrow = 2,
+                    ncol = 2,
+                    align = "hv")
+save_plot("color.bias.png", allplots, nrow = 4, ncol = 4)
+
+#################################################################################
+#biodiversity
+#################################################################################
 
 #species accumulation curve by year
 #convert dataset to community dataset
